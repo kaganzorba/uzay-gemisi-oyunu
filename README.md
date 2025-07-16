@@ -1,6 +1,6 @@
 # Uzay Gemisi Savaşı Oyunu
 
-Bu proje, HTML5 Canvas ve JavaScript kullanılarak geliştirilmiş bir uzay gemisi savaş oyunudur. Oyuncu uzay gemisini kontrol ederek düşman gemileri ve meteorları yok etmeye çalışır.
+Bu proje, HTML5 Canvas ve JavaScript kullanılarak geliştirilmiş bir uzay gemisi savaş oyunudur. Oyuncu uzay gemisini kontrol ederek düşman gemilerini yok edip meteorlardan ve düşman saldırılarından çalışır.
 
 ## Teknolojiler
 
