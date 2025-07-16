@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=800, initial-scale=1.0" />
+  <title>Uzay Gemisi Savaşı</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: black; overflow: hidden; font-family: Arial, sans-serif; }
+    #gameCanvas { background: #000; display: block; margin: 0 auto; border: 2px solid white; }
+    #scoreboard { color: white; text-align: center; font-size: 20px; margin-top: 10px; }
+    #startScreen, #gameOverScreen {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background-color: rgba(0, 0, 0, 0.85);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+    #startBtn, #restartBtn {
+      padding: 10px 20px;
+      background: white;
+      color: black;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+    #powerups {
+      color: white;
+      text-align: center;
+      font-size: 18px;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Uzay Gemisi Savaşı</h1>
+    <p>Hareket: ← → | Ateş: SPACE | Kalkan: S | Alev Topu: F</p>
+    <button id="startBtn">BAŞLAT</button>
+  </div>
+  <div id="gameOverScreen" style="display:none;">
+    <h1>Oyun Bitti!</h1>
+    <p id="finalScore"></p>
+    <button id="restartBtn">YENİDEN BAŞLA</button>
+  </div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="scoreboard">
+    <span id="score">Skor: 0</span> | <span id="lives">Can: 3</span>
+  </div>
+  <div id="powerups">
+    Alev Topu Hakkı: <span id="flameCount">3</span> | Kalkan: <span id="shieldStatus">Hazır</span>
+  </div>
+
+  <audio id="shootSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_4df4ba01a8.mp3" preload="auto"></audio>
+  <audio id="flameSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_11e7e5e1e2.mp3" preload="auto"></audio>
+  <audio id="enemyShootSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_11e7e5e1e2.mp3" preload="auto"></audio>
+  <audio id="hitSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_12b7e6e1e2.mp3" preload="auto"></audio>
+  <audio id="explosionSound" src="https://cdn.pixabay.com/audio/2022/10/16/audio_12b7e6e1e2.mp3" preload="auto"></audio>
+  <audio id="gameOverSound" src="https://cdn.pixabay.com/audio/2022/10/16/audio_12b7e6e1e2.mp3" preload="auto"></audio>
+  <audio id="laserSound" src="https://cdn.pixabay.com/audio/2022/10/16/audio_145b7e6e1e2.mp3" preload="auto"></audio>
+  <audio id="bgMusic" src="https://cdn.pixabay.com/audio/2022/11/16/audio_12b7e6e1e2.mp3" loop preload="auto"></audio>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const startBtn = document.getElementById("startBtn");
+    const startScreen = document.getElementById("startScreen");
+    const gameOverScreen = document.getElementById("gameOverScreen");
+    const restartBtn = document.getElementById("restartBtn");
+    const finalScore = document.getElementById("finalScore");
+    const scoreDisplay = document.getElementById("score");
+    const livesDisplay = document.getElementById("lives");
+    const flameDisplay = document.getElementById("flameCount");
+    const shieldStatus = document.getElementById("shieldStatus");
+
+    let player, bullets, enemies, enemyBullets, keys, score, lives, flameCount, shieldActive, shieldCooldown, gameActive, enemySpawnInterval, enemyShootInterval, flameCooldown;
+
+    // Oyuncu hareketi için hız değişkeni ekle
+    let playerVX = 0;
+
+    // Enemy hız çarpanı
+    let enemySpeedMultiplier = 1;
+
+    // Oyun başladığında sıfırla
+    function resetGame() {
+      player = { x: 370, y: 500, width: 60, height: 60, speed: 6 };
+      bullets = [];
+      enemies = [];
+      enemyBullets = [];
+      keys = {};
+      score = 0;
+      lives = 3;
+      flameCount = 3;
+      shieldActive = false;
+      shieldCooldown = 0;
+      flameCooldown = 0;
+      gameActive = true;
+      playerVX = 0;
+      enemySpeedMultiplier = 1;
+      updateUI();
+    }
+
+    class Bullet {
+      constructor(x, y, speed, color = "lime", width = 4, height = 14) {
+        this.x = x;
+        this.y = y;
+        this.speed = speed;
+        this.width = width;
+        this.height = height;
+        this.color = color;
+      }
+      update() {
+        this.y += this.speed;
+      }
+      draw() {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+      }
+    }
+
+    class Flame {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 16;
+        this.height = 60;
+        this.speed = -12;
+        this.color = "orange";
+        this.pierce = true; // Delip geçsin
+      }
+      update() {
+        this.y += this.speed;
+      }
+      draw() {
+        ctx.save();
+        ctx.shadowColor = "yellow";
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.restore();
+      }
+    }
+
+    class Enemy {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 40;
+        this.height = 40;
+        this.speed = 2 + Math.random() * 1.5;
+        this.shootCooldown = Math.random() * 120 + 60;
+      }
+      update() {
+        this.y += this.speed * enemySpeedMultiplier;
+        this.shootCooldown--;
+        if (this.shootCooldown <= 0 && gameActive) {
+          this.shoot();
+          this.shootCooldown = Math.random() * 120 + 60;
+        }
+      }
+      draw() {
+        drawEnemyShip(this.x, this.y, this.width, this.height);
+      }
+      shoot() {
+        enemyBullets.push(new Bullet(this.x + this.width / 2, this.y + this.height, 5, "yellow", 4, 14));
+        const enemyShootSound = document.getElementById("enemyShootSound");
+        enemyShootSound.currentTime = 0;
+        enemyShootSound.play();
+      }
+    }
+
+    class BouncingBullet extends Bullet {
+      constructor(x, y, speed, color = "cyan", width = 6, height = 16) {
+        super(x, y, speed, color, width, height);
+        this.vx = (Math.random() - 0.5) * 6; // Yana rastgele hız
+        this.bounceCount = 3;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.speed;
+        // Kenardan sekme
+        if (this.x < 0 || this.x + this.width > canvas.width) {
+          this.vx *= -1;
+          this.bounceCount--;
+        }
+      }
+      isAlive() {
+        return this.bounceCount > 0 && this.y > -20 && this.y < canvas.height + 20;
+      }
+    }
+
+    class Meteor {
+      constructor() {
+        this.x = Math.random() * (canvas.width - 40);
+        this.y = -60;
+        this.radius = 20 + Math.random() * 20;
+        this.speed = 2 + Math.random() * 2;
+        this.vx = (Math.random() - 0.5) * 2;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.speed;
+      }
+      draw() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#888";
+        ctx.shadowColor = "#fff";
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    let meteors = [];
+    setInterval(() => { if (gameActive) meteors.push(new Meteor()); }, 2000);
+
+    function spawnEnemy() {
+      const x = Math.random() * (canvas.width - 40);
+      enemies.push(new Enemy(x, 0));
+    }
+
+    function updateUI() {
+      scoreDisplay.textContent = "Skor: " + score;
+      livesDisplay.textContent = "Can: " + lives;
+      flameDisplay.textContent = flameCount;
+      shieldStatus.textContent = shieldActive ? "AKTİF" : (shieldCooldown > 0 ? "Bekliyor" : "Hazır");
+      shieldStatus.style.color = shieldActive ? "lime" : (shieldCooldown > 0 ? "orange" : "white");
+    }
+
+    // Yıldızlar için
+    let stars = [];
+    function createStars() {
+      stars = [];
+      for (let i = 0; i < 80; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: Math.random() * 1.5 + 0.5,
+          speed: Math.random() * 0.7 + 0.2
+        });
+      }
+    }
+    function updateStars() {
+      for (let s of stars) {
+        s.y += s.speed;
+        if (s.y > canvas.height) {
+          s.y = 0;
+          s.x = Math.random() * canvas.width;
+        }
+      }
+    }
+    function drawStars() {
+      ctx.save();
+      ctx.fillStyle = "white";
+      for (let s of stars) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function update() {
+      // Oyuncu hareketi
+      if (keys["ArrowLeft"]) playerVX -= 0.5;
+      if (keys["ArrowRight"]) playerVX += 0.5;
+      playerVX *= 0.92; // Süzülme efekti
+      player.x += playerVX;
+      player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+      // Kalkan süresi ve cooldown
+      if (shieldActive) {
+        shieldCooldown--;
+        if (shieldCooldown <= 0) {
+          shieldActive = false;
+        }
+      } else if (shieldCooldown > 0) {
+        shieldCooldown--;
+      }
+
+      // Flame cooldown
+      if (flameCooldown > 0) flameCooldown--;
+
+      // Mermiler
+      bullets.forEach(b => b.update());
+      bullets = bullets.filter(b => {
+        if (b instanceof BouncingBullet) return b.isAlive();
+        return b.y > -20 && b.y < canvas.height + 20;
+      });
+
+      // Düşmanlar
+      enemies.forEach(e => e.update());
+      enemies = enemies.filter(e => e.y < canvas.height + 40);
+
+      // Düşman mermileri
+      enemyBullets.forEach(b => b.update());
+      enemyBullets = enemyBullets.filter(b => b.y < canvas.height + 20);
+
+      // Meteorlar
+      meteors.forEach(m => m.update());
+      meteors = meteors.filter(m => m.y < canvas.height + 40);
+
+      // Çarpışma: Oyuncu mermisi düşman
+      bullets.forEach((b, bi) => {
+        enemies.forEach((e, ei) => {
+          if (b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y) {
+            enemies.splice(ei, 1);
+            bullets.splice(bi, 1);
+            score += 10;
+            playExplosionSound(); // <-- yeni ses
+            updateUI();
+          }
+        });
+      });
+
+      // Çarpışma: Flame düşman
+      bullets.forEach((b, bi) => {
+        if (b instanceof Flame) {
+          enemies = enemies.filter((e, ei) => {
+            const hit = b.x < e.x + e.width && b.x + b.width > e.x && b.y < e.y + e.height && b.y + b.height > e.y;
+            if (hit) {
+              score += 10;
+              updateUI();
+            }
+            return !hit; // Vurulan düşman silinir, Flame devam eder
+          });
+        }
+      });
+
+      // Çarpışma: Düşman oyuncuya
+      enemies.forEach((e, ei) => {
+        if (player.x < e.x + e.width && player.x + player.width > e.x && player.y < e.y + e.height && player.y + player.height > e.y) {
+          if (!shieldActive) {
+            lives--;
+            playHitSound();
+            updateUI();
+          }
+          enemies.splice(ei, 1);
+          if (lives <= 0) endGame();
+        }
+      });
+
+      // Çarpışma: Düşman mermisi oyuncuya
+      enemyBullets.forEach((b, bi) => {
+        if (player.x < b.x + b.width && player.x + player.width > b.x && player.y < b.y + b.height && player.y + player.height > b.y) {
+          if (!shieldActive) {
+            lives--;
+            playHitSound();
+            updateUI();
+          }
+          enemyBullets.splice(bi, 1);
+          if (lives <= 0) endGame();
+        }
+      });
+
+      // Çarpışma: Meteor oyuncuya
+      meteors.forEach((m, mi) => {
+        if (
+          Math.abs(player.x + player.width / 2 - m.x) < m.radius + player.width / 2 &&
+          Math.abs(player.y + player.height / 2 - m.y) < m.radius + player.height / 2
+        ) {
+          if (!shieldActive) {
+            lives--;
+            playHitSound();
+            updateUI();
+          }
+          meteors.splice(mi, 1);
+          if (lives <= 0) endGame();
+        }
+      });
+    }
+
+    function drawPlayerShip(x, y, width, height, shield) {
+      ctx.save();
+      ctx.translate(x + width / 2, y + height / 2);
+      // Gemi gövdesi
+      ctx.beginPath();
+      ctx.moveTo(0, -height / 2); // burun
+      ctx.lineTo(-width / 2.5, height / 2.5); // sol alt
+      ctx.lineTo(-width / 6, height / 6); // sol orta
+      ctx.lineTo(width / 6, height / 6); // sağ orta
+      ctx.lineTo(width / 2.5, height / 2.5); // sağ alt
+      ctx.closePath();
+      ctx.fillStyle = "#b0e0ff";
+      ctx.shadowColor = "#00f0ff";
+      ctx.shadowBlur = 10;
+      ctx.fill();
+
+      // Kokpit
+      ctx.beginPath();
+      ctx.ellipse(0, -height / 5, width / 8, height / 8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.shadowBlur = 0;
+      ctx.fill();
+
+      // Kanatlar
+      ctx.beginPath();
+      ctx.moveTo(-width / 2.5, height / 2.5);
+      ctx.lineTo(-width / 2, height / 2);
+      ctx.lineTo(-width / 6, height / 6);
+      ctx.closePath();
+      ctx.fillStyle = "#5ad";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(width / 2.5, height / 2.5);
+      ctx.lineTo(width / 2, height / 2);
+      ctx.lineTo(width / 6, height / 6);
+      ctx.closePath();
+      ctx.fillStyle = "#5ad";
+      ctx.fill();
+
+      // Motor ateşi
+      ctx.beginPath();
+      ctx.moveTo(-width / 8, height / 2.5);
+      ctx.lineTo(0, height / 2 + Math.random() * 10);
+      ctx.lineTo(width / 8, height / 2.5);
+      ctx.closePath();
+      ctx.fillStyle = "orange";
+      ctx.shadowColor = "yellow";
+      ctx.shadowBlur = 15;
+      ctx.fill();
+
+      // Kalkan efekti
+      if (shield) {
+        ctx.beginPath();
+        ctx.arc(0, 0, width * 0.7, 0, Math.PI * 2);
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 5;
+        ctx.globalAlpha = 0.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    function drawEnemyShip(x, y, width, height) {
+      ctx.save();
+      ctx.translate(x + width / 2, y + height / 2);
+      // Gemi gövdesi
+      ctx.beginPath();
+      ctx.moveTo(0, -height / 2); // burun
+      ctx.lineTo(-width / 2.5, height / 2.5); // sol alt
+      ctx.lineTo(-width / 6, height / 6); // sol orta
+      ctx.lineTo(width / 6, height / 6); // sağ orta
+      ctx.lineTo(width / 2.5, height / 2.5); // sağ alt
+      ctx.closePath();
+      ctx.fillStyle = "#ff3b3b";
+      ctx.shadowColor = "#ff0000";
+      ctx.shadowBlur = 10;
+      ctx.fill();
+
+      // Kokpit
+      ctx.beginPath();
+      ctx.ellipse(0, -height / 5, width / 8, height / 8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.shadowBlur = 0;
+      ctx.fill();
+
+      // Kanatlar
+      ctx.beginPath();
+      ctx.moveTo(-width / 2.5, height / 2.5);
+      ctx.lineTo(-width / 2, height / 2);
+      ctx.lineTo(-width / 6, height / 6);
+      ctx.closePath();
+      ctx.fillStyle = "#a00";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(width / 2.5, height / 2.5);
+      ctx.lineTo(width / 2, height / 2);
+      ctx.lineTo(width / 6, height / 6);
+      ctx.closePath();
+      ctx.fillStyle = "#a00";
+      ctx.fill();
+
+      // Motor ateşi
+      ctx.beginPath();
+      ctx.moveTo(-width / 8, height / 2.5);
+      ctx.lineTo(0, height / 2 + Math.random() * 10);
+      ctx.lineTo(width / 8, height / 2.5);
+      ctx.closePath();
+      ctx.fillStyle = "orange";
+      ctx.shadowColor = "yellow";
+      ctx.shadowBlur = 15;
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    class AnimatedBullet extends Bullet {
+      constructor(x, y, speed) {
+        super(x, y, speed, "lime", 4, 18);
+        this.frame = 0;
+      }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(this.frame/2);
+        ctx.shadowColor = "aqua";
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        this.frame++;
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Hareketli yıldızlar
+      drawStars();
+
+      // Oyuncu uzay gemisi (artık kare değil!)
+      drawPlayerShip(player.x, player.y, player.width, player.height, shieldActive);
+
+      // Mermiler
+      bullets.forEach(b => b.draw());
+
+      // Düşmanlar
+      enemies.forEach(e => e.draw());
+
+      // Düşman mermileri
+      enemyBullets.forEach(b => {
+        ctx.save();
+        ctx.shadowColor = "yellow";
+        ctx.shadowBlur = 10;
+        b.draw();
+        ctx.restore();
+      });
+
+      // Meteorlar
+      meteors.forEach(m => m.draw());
+    }
+
+    function gameLoop() {
+      if (!gameActive) return;
+      updateStars();
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function playShootSound() {
+      const shootSound = document.getElementById("shootSound");
+      shootSound.currentTime = 0;
+      shootSound.play();
+    }
+
+    function playFlameSound() {
+      const flameSound = document.getElementById("flameSound");
+      flameSound.currentTime = 0;
+      flameSound.play();
+    }
+
+    function playHitSound() {
+      const hitSound = document.getElementById("hitSound");
+      hitSound.currentTime = 0;
+      hitSound.play();
+    }
+
+    function playExplosionSound() {
+      const explosionSound = document.getElementById("explosionSound");
+      explosionSound.currentTime = 0;
+      explosionSound.play();
+    }
+    function playGameOverSound() {
+      const gameOverSound = document.getElementById("gameOverSound");
+      gameOverSound.currentTime = 0;
+      gameOverSound.play();
+    }
+
+    function playLaserSound() {
+      const laserSound = document.getElementById("laserSound");
+      laserSound.currentTime = 0;
+      laserSound.play();
+    }
+
+    function playBgMusic() {
+      const bgMusic = document.getElementById("bgMusic");
+      bgMusic.volume = 0.3;
+      bgMusic.currentTime = 0;
+      bgMusic.play();
+    }
+
+    document.addEventListener("keydown", e => {
+      keys[e.key] = true;
+      if (!gameActive) return;
+
+      // Ateş
+      if (e.key === " " && !keys["_spacePressed"]) {
+        bullets.push(new AnimatedBullet(player.x + player.width / 2 - 2, player.y, -8));
+        playLaserSound();
+        keys["_spacePressed"] = true;
+      }
+
+      // Kalkan (S)
+      if (e.key.toLowerCase() === "s" && !shieldActive && shieldCooldown <= 0) {
+        shieldActive = true;
+        shieldCooldown = 180; // 3 saniye
+        updateUI();
+      }
+
+      // Alev Topu (F)
+      if (e.key.toLowerCase() === "f" && flameCount > 0 && flameCooldown <= 0) {
+        bullets.push(new Flame(player.x + player.width / 2 - 8, player.y - 40));
+        flameCount--;
+        flameCooldown = 60; // 1 sn cooldown
+        playFlameSound();
+        updateUI();
+      }
+
+      // Seken mermi (B tuşu)
+      if (e.key.toLowerCase() === "b" && !keys["_bPressed"]) {
+        bullets.push(new BouncingBullet(player.x + player.width / 2 - 3, player.y, -7));
+        playShootSound();
+        keys["_bPressed"] = true;
+      }
+
+      // Yeni mermi türü (A tuşu)
+      if (e.key.toLowerCase() === "a" && !keys["_aPressed"]) {
+        bullets.push(new AnimatedBullet(player.x + player.width / 2 - 2, player.y, -8));
+        playShootSound();
+        keys["_aPressed"] = true;
+      }
+    });
+
+    document.addEventListener("keyup", e => {
+      keys[e.key] = false;
+      if (e.key === " ") keys["_spacePressed"] = false;
+      if (e.key.toLowerCase() === "b") keys["_bPressed"] = false;
+      if (e.key.toLowerCase() === "a") keys["_aPressed"] = false;
+    });
+
+    function endGame() {
+      gameActive = false;
+      clearInterval(enemySpawnInterval);
+      gameOverScreen.style.display = "flex";
+      finalScore.textContent = "Skorunuz: " + score;
+      playGameOverSound(); // <-- yeni ses
+    }
+
+    startBtn.addEventListener("click", () => {
+      startScreen.style.display = "none";
+      resetGame();
+      createStars();
+      enemySpawnInterval = setInterval(spawnEnemy, 1000);
+      playBgMusic(); // <-- ekle
+      gameLoop();
+    });
+
+    restartBtn.addEventListener("click", () => {
+      gameOverScreen.style.display = "none";
+      resetGame();
+      createStars();
+      enemySpawnInterval = setInterval(spawnEnemy, 1000);
+      playBgMusic(); // <-- ekle
+      gameLoop();
+    });
+
+    // Tam ekran butonu
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    fullscreenBtn.addEventListener("click", () => {
+      if (!document.fullscreenElement) {
+        canvas.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    });
+  </script>
+
+
+</html></body>  <button id="fullscreenBtn" style="position:fixed;top:10px;right:10px;z-index:20;">Tam Ekran</button>
+</body>
+</html>
