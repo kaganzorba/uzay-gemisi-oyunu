@@ -26,7 +26,6 @@ Bu proje, HTML5 Canvas ve JavaScript kullanılarak geliştirilmiş bir uzay gemi
 - **Düşman Gemileri**: Otomatik hareket eden ve ateş açan düşmanlar
 - **Meteorlar**: Rastgele yönlerden gelen tehlikeli kayalar
 - **Güç Sistemleri**: Kalkan ve alev topu yetenekleri
-- **Ses Efektleri**: Ateş, patlama ve arka plan müziği
 - **Hareketli Yıldızlar**: Dinamik arka plan
 - **Skor Sistemi**: Düşman yok etme puanları
 
